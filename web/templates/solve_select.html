@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h1>Выбор набора</h1>
+
+  <section class="grid">
+    <div>
+      <h3>1. Предмет</h3>
+      <ul>
+        {% for s in subjects %}
+          <li><a href="/solve/{{ s.id }}">{{ s.name }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div>
+      <h3>2. Тема</h3>
+      {% if topics %}
+        <ul>
+          {% for t in topics %}
+            <li><a href="/solve/{{ selected_subject_id }}/{{ t.id }}">{{ t.name }}</a></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>Сначала выберите предмет.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if subtopics is not none and selected_subject_id and selected_topic_id %}
+    <section>
+      <h3>3. Подтемы</h3>
+      <form action="/solve/start" method="post">
+        <input type="hidden" name="subject_id" value="{{ selected_subject_id }}" />
+        <input type="hidden" name="topic_id" value="{{ selected_topic_id }}" />
+
+        {% if subtopics %}
+          {% for st in subtopics %}
+            <label class="row"><input type="checkbox" name="subtopic_ids" value="{{ st.id }}" /> {{ st.name }}</label>
+          {% endfor %}
+          <p class="muted">Если ничего не отмечать, будут использованы все подтемы.</p>
+        {% else %}
+          <p>В теме нет подтем. Будут выбраны все вопросы темы.</p>
+        {% endif %}
+
+        <button class="btn" type="submit">Начать сессию</button>
+      </form>
+    </section>
+  {% endif %}
+{% endblock %}

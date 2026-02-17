@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h1>Вопросы закончились</h1>
+  <p>Итог сессии: {{ correct }} / {{ total }}</p>
+  <p><a class="btn" href="/solve">Выбрать другой набор</a></p>
+{% endblock %}

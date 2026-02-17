@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title or "Quiz Web" }}</title>
+  <link rel="stylesheet" href="{{ request.url_for('static', path='/styles.css') }}" />
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="brand">Quiz Web</a>
+    <nav>
+      {% if user %}
+        <a href="/solve">Решать</a>
+        {% if user.role in ['admin', 'superadmin'] %}
+          <a href="/admin/import">Импорт</a>
+        {% endif %}
+        <a href="/logout">Выйти</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

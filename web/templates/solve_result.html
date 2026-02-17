@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h1>{{ 'Верно' if is_correct else 'Неверно' }}</h1>
+  <p class="muted">Счёт: {{ correct }} / {{ total }}</p>
+
+  <div class="card">
+    <h3>Пояснение</h3>
+    <p>{{ explanation or '-' }}</p>
+  </div>
+
+  <p><a class="btn" href="/solve/question">Следующий вопрос</a></p>
+  <p><a href="/solve">Сменить тему</a></p>
+{% endblock %}

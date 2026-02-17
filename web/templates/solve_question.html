@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h1>Вопрос</h1>
+  <p class="muted">Счёт: {{ correct }} / {{ total }}</p>
+
+  <div class="card">
+    <p>{{ question.text }}</p>
+    <form action="/solve/answer" method="post">
+      {% if question.qtype == 'single' %}
+        {% for o in options %}
+          <label class="row"><input type="radio" name="option_ids" value="{{ o.id }}" required /> {{ o.text }}</label>
+        {% endfor %}
+      {% else %}
+        {% for o in options %}
+          <label class="row"><input type="checkbox" name="option_ids" value="{{ o.id }}" /> {{ o.text }}</label>
+        {% endfor %}
+      {% endif %}
+      <button class="btn" type="submit">Ответить</button>
+    </form>
+  </div>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h1>Сайт тестов</h1>
+
+  {% if user %}
+    <p>Вы вошли как <strong>{{ user.full_name }}</strong> (роль: {{ user.role }}).</p>
+    <p><a class="btn" href="/solve">Начать решать</a></p>
+    {% if user.role in ['admin', 'superadmin'] %}
+      <p><a class="btn" href="/admin/import">Bulk-импорт вопросов</a></p>
+    {% endif %}
+  {% else %}
+    <p>Вход через код из Telegram-бота.</p>
+
+    {% if error %}
+      <p style="color:#b42318;"><strong>{{ error }}</strong></p>
+    {% endif %}
+
+    {% if info %}
+      <p style="color:#0b6e4f;"><strong>{{ info }}</strong></p>
+    {% endif %}
+
+    <div class="card">
+      <h3>1. Укажите Telegram</h3>
+      <p class="muted">Введите <code>@username</code> или numeric <code>tg_id</code> и нажмите «Отправить код».</p>
+      <form action="/auth/request-code" method="post">
+        <input type="text" name="telegram" placeholder="@username или 123456789" required />
+        <button class="btn" type="submit">Отправить код</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>2. Введите код</h3>
+      {% if pending_login %}
+        <p class="muted">Код отправлен для аккаунта {{ pending_login_name or pending_tg_id }}.</p>
+      {% else %}
+        <p class="muted">Сначала запросите код на шаге 1.</p>
+      {% endif %}
+      <form action="/auth/verify-code" method="post">
+        <input type="text" name="code" pattern="[0-9]{6}" maxlength="6" placeholder="123456" required />
+        <button class="btn" type="submit">Войти</button>
+      </form>
+    </div>
+  {% endif %}
+{% endblock %}

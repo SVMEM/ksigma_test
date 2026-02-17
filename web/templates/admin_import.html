@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h1>Bulk-импорт вопросов</h1>
+
+  <p>Поддерживается <code>.csv</code> и <code>.json</code>.</p>
+  <p class="muted">Поля: subject_code, subject_name, topic_name, subtopic_name, qtype, question_text, explanation, options, correct</p>
+
+  <form action="/admin/import" method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv,.json" required />
+    <button class="btn" type="submit">Загрузить</button>
+  </form>
+
+  {% if report %}
+    <div class="card">
+      <p>Создано: <strong>{{ report.created }}</strong></p>
+      <p>Ошибок: <strong>{{ report.failed }}</strong></p>
+      {% if report.errors %}
+        <h3>Ошибки (первые 50)</h3>
+        <ul>
+          {% for e in report.errors %}
+            <li>{{ e }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <h3>Пример CSV options/correct</h3>
+    <pre>options: A) 2|B) 4|C) 6
+correct: B</pre>
+  </div>
+{% endblock %}
