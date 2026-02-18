@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h1>Рассылка пользователям</h1>
+  <p class="muted">Доступно только суперадминам. Пользователей в базе: <strong>{{ total_users }}</strong>.</p>
+
+  {% if error %}
+    <p class="status status-bad"><strong>{{ error }}</strong></p>
+  {% endif %}
+
+  <form class="card" action="/admin/broadcast" method="post">
+    <h3>Текст сообщения</h3>
+    <textarea name="text" rows="7" maxlength="3500" placeholder="Введите текст рассылки..." required>{{ draft }}</textarea>
+    <label class="row">
+      <input type="checkbox" name="send_confirm" value="yes" required />
+      Подтверждаю отправку всем пользователям из базы
+    </label>
+    <button class="btn" type="submit">Отправить рассылку</button>
+  </form>
+
+  {% if report %}
+    <div class="card">
+      <h3>Итоги отправки</h3>
+      <p>Отправлено: <strong>{{ report.sent }}</strong></p>
+      <p>Ошибок: <strong>{{ report.failed }}</strong></p>
+      <p>Пропущено (текущий суперадмин): <strong>{{ report.skipped_self }}</strong></p>
+      {% if report.failed_ids %}
+        <h3>Первые проблемные tg_id</h3>
+        <p class="muted">{{ report.failed_ids | join(', ') }}</p>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}

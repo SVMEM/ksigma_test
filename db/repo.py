@@ -1,9 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from db.models import Subject, Topic, Subtopic, Question, Option, Admin, Attempt
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, case
 from sqlalchemy.orm import selectinload
 from db.models import User
+from datetime import datetime, timedelta
 
 
 class Repo:
@@ -34,6 +35,10 @@ class Repo:
     async def list_subjects(self) -> list[Subject]:
         res = await self.s.execute(select(Subject).order_by(Subject.id.asc()))
         return list(res.scalars().all())
+
+    async def list_user_tg_ids(self) -> list[int]:
+        res = await self.s.execute(select(User.tg_id).order_by(User.id.asc()))
+        return [int(x) for x in res.scalars().all()]
 
     async def is_admin(self, tg_id: int) -> bool:
         res = await self.s.execute(select(Admin.id).where(Admin.tg_id == tg_id))
@@ -285,3 +290,32 @@ class Repo:
         )
         res = await self.s.execute(q)
         return [(name, int(cnt)) for name, cnt in res.all()]
+
+    async def accuracy_by_day(self, user_id: int, days: int = 14) -> list[tuple[str, int, int]]:
+        # returns [(YYYY-MM-DD, solved, correct), ...] in ascending date order
+        date_col = func.date(Attempt.created_at)
+        cutoff = datetime.utcnow() - timedelta(days=days - 1)
+        q = (
+            select(
+                date_col.label("d"),
+                func.count(Attempt.id).label("solved"),
+                func.sum(case((Attempt.is_correct == True, 1), else_=0)).label("correct"),
+            )
+            .where(Attempt.user_id == user_id, Attempt.created_at >= cutoff)
+            .group_by(date_col)
+            .order_by(date_col.asc())
+        )
+        res = await self.s.execute(q)
+        return [(str(d), int(solved), int(correct or 0)) for d, solved, correct in res.all()]
+
+    async def recent_attempts(self, user_id: int, limit: int = 12) -> list[tuple[datetime, str, bool]]:
+        q = (
+            select(Attempt.created_at, Topic.name, Attempt.is_correct)
+            .join(Question, Question.id == Attempt.question_id)
+            .join(Topic, Topic.id == Question.topic_id)
+            .where(Attempt.user_id == user_id)
+            .order_by(Attempt.created_at.desc())
+            .limit(limit)
+        )
+        res = await self.s.execute(q)
+        return [(dt, topic, ok) for dt, topic, ok in res.all()]

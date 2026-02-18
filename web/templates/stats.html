@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h1>Статистика</h1>
+
+  <section class="kpi-grid">
+    <div class="card kpi">
+      <div class="kpi-title">Всего решено</div>
+      <div class="kpi-value">{{ total }}</div>
+    </div>
+    <div class="card kpi">
+      <div class="kpi-title">Верно</div>
+      <div class="kpi-value">{{ correct }}</div>
+    </div>
+    <div class="card kpi">
+      <div class="kpi-title">Точность</div>
+      <div class="kpi-value">{{ accuracy }}%</div>
+    </div>
+    <div class="card kpi">
+      <div class="kpi-title">Серия идеальных дней</div>
+      <div class="kpi-value">{{ streak }}</div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h3>Динамика за 14 дней</h3>
+      <div class="day-chart">
+        {% for d in days %}
+          <div class="day-col">
+            <div class="day-bar-wrap">
+              <div class="day-bar" style="height: {{ (d.solved * 12) if d.solved < 10 else 120 }}px;"></div>
+            </div>
+            <div class="day-lbl">{{ d.date }}</div>
+            <div class="day-meta">{{ d.correct }}/{{ d.solved }}</div>
+          </div>
+        {% endfor %}
+      </div>
+      <p class="muted">За неделю: {{ week_correct }}/{{ week_total }} ({{ week_accuracy }}%). Лучший день: {{ best_day.date }} ({{ best_day.solved }}).</p>
+    </div>
+
+    <div class="card">
+      <h3>Топ тем</h3>
+      {% if topic_items %}
+        {% for item in topic_items %}
+          <div class="topic-row">
+            <div class="topic-head">
+              <span>{{ item.name }}</span>
+              <span>{{ item.count }}</span>
+            </div>
+            <div class="topic-track">
+              <div class="topic-fill" style="width: {{ item.pct }}%;"></div>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="muted">Пока нет данных по темам.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Последние попытки</h3>
+    {% if recent %}
+      <ul class="recent-list">
+        {% for dt, topic, ok in recent %}
+          <li>
+            <span class="recent-time">{{ dt.strftime('%d.%m %H:%M') }}</span>
+            <span class="recent-topic">{{ topic }}</span>
+            <span class="recent-badge {{ 'ok' if ok else 'bad' }}">{{ 'OK' if ok else 'FAIL' }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Попыток пока нет.</p>
+    {% endif %}
+  </section>
+{% endblock %}

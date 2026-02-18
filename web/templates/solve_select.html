@@ -1,42 +1,67 @@
 {% extends 'base.html' %}
 {% block content %}
-  <h1>Выбор набора</h1>
+  <section class="hero card">
+    <h1>Выбери предмет и собери свою сессию</h1>
+    <p class="muted">Персональный маршрут: предмет → тема → подтемы → серия заданий.</p>
+  </section>
+
+  <section class="card">
+    <h3>1. Предмет</h3>
+    <div class="subject-grid">
+      {% for s in subjects %}
+        {% set code = (s.code or '')|lower %}
+        {% if code in ['math', 'mathematics'] %}
+          {% set icon = '∑' %}
+          {% set tone = 'tone-math' %}
+        {% elif code in ['biology', 'bio'] %}
+          {% set icon = '🧬' %}
+          {% set tone = 'tone-bio' %}
+        {% elif code in ['chemistry', 'chem'] %}
+          {% set icon = '⚗️' %}
+          {% set tone = 'tone-chem' %}
+        {% elif code in ['economics', 'econ'] %}
+          {% set icon = '📈' %}
+          {% set tone = 'tone-econ' %}
+        {% else %}
+          {% set icon = '📚' %}
+          {% set tone = 'tone-default' %}
+        {% endif %}
+        <a class="subject-card {{ tone }} {% if selected_subject_id == s.id %}subject-active{% endif %}" href="/solve/subject/{{ s.id }}">
+          <div class="subject-icon">{{ icon }}</div>
+          <div class="subject-name">{{ s.name }}</div>
+          <div class="subject-code">{{ s.code }}</div>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
 
   <section class="grid">
-    <div>
-      <h3>1. Предмет</h3>
-      <ul>
-        {% for s in subjects %}
-          <li><a href="/solve/{{ s.id }}">{{ s.name }}</a></li>
-        {% endfor %}
-      </ul>
-    </div>
-
-    <div>
+    <div class="card">
       <h3>2. Тема</h3>
       {% if topics %}
-        <ul>
+        <ul class="topic-list">
           {% for t in topics %}
-            <li><a href="/solve/{{ selected_subject_id }}/{{ t.id }}">{{ t.name }}</a></li>
+            <li><a class="topic-link" href="/solve/topic/{{ selected_subject_id }}/{{ t.id }}">{{ t.name }}</a></li>
           {% endfor %}
         </ul>
       {% else %}
         <p>Сначала выберите предмет.</p>
       {% endif %}
     </div>
-  </section>
 
-  {% if subtopics is not none and selected_subject_id and selected_topic_id %}
-    <section>
+    {% if subtopics is not none and selected_subject_id and selected_topic_id %}
+    <section class="card">
       <h3>3. Подтемы</h3>
       <form action="/solve/start" method="post">
         <input type="hidden" name="subject_id" value="{{ selected_subject_id }}" />
         <input type="hidden" name="topic_id" value="{{ selected_topic_id }}" />
 
         {% if subtopics %}
+          <div class="subtopic-grid">
           {% for st in subtopics %}
-            <label class="row"><input type="checkbox" name="subtopic_ids" value="{{ st.id }}" /> {{ st.name }}</label>
+            <label class="subtopic-item"><input type="checkbox" name="subtopic_ids" value="{{ st.id }}" /> {{ st.name }}</label>
           {% endfor %}
+          </div>
           <p class="muted">Если ничего не отмечать, будут использованы все подтемы.</p>
         {% else %}
           <p>В теме нет подтем. Будут выбраны все вопросы темы.</p>
@@ -45,5 +70,6 @@
         <button class="btn" type="submit">Начать сессию</button>
       </form>
     </section>
-  {% endif %}
+    {% endif %}
+  </section>
 {% endblock %}

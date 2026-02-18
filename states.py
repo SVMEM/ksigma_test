@@ -25,3 +25,8 @@ class AdminSG(StatesGroup):
     add_q_options = State()          # шаг 6: варианты A)...
     add_q_correct = State()          # шаг 7: правильные (B или B,C)
     add_q_expl = State()             # шаг 8: объяснение
+
+
+class SuperAdminSG(StatesGroup):
+    broadcast_wait_text = State()
+    broadcast_confirm = State()

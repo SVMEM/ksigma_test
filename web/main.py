@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import hashlib
 import json
@@ -9,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -109,6 +110,31 @@ def _require_admin(user: dict[str, Any] | None) -> dict[str, Any]:
     if usr["role"] not in {"admin", "superadmin"}:
         raise HTTPException(status_code=403, detail="Admin role required")
     return usr
+
+
+def _require_superadmin(user: dict[str, Any] | None) -> dict[str, Any]:
+    usr = _require_auth(user)
+    if usr["role"] != "superadmin":
+        raise HTTPException(status_code=403, detail="Superadmin role required")
+    return usr
+
+
+def _accuracy(correct: int, total: int) -> float:
+    if total <= 0:
+        return 0.0
+    return round((correct / total) * 100.0, 1)
+
+
+def _streak_from_daily(daily: list[dict[str, Any]]) -> int:
+    streak = 0
+    for day in reversed(daily):
+        solved = int(day["solved"])
+        correct = int(day["correct"])
+        if solved > 0 and solved == correct:
+            streak += 1
+        else:
+            break
+    return streak
 
 
 async def _get_or_create_topic_by_name(repo: Repo, subject_id: int, name: str) -> int:
@@ -279,7 +305,9 @@ async def logout(request: Request):
 
 @app.get("/solve")
 async def solve_select(request: Request):
-    user = _require_auth(await _current_user(request))
+    user = await _current_user(request)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
 
     async with sm() as s:
         repo = Repo(s)
@@ -300,9 +328,11 @@ async def solve_select(request: Request):
     )
 
 
-@app.get("/solve/{subject_id}")
+@app.get("/solve/subject/{subject_id}")
 async def solve_select_topic(request: Request, subject_id: int):
-    user = _require_auth(await _current_user(request))
+    user = await _current_user(request)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
 
     async with sm() as s:
         repo = Repo(s)
@@ -324,48 +354,11 @@ async def solve_select_topic(request: Request, subject_id: int):
     )
 
 
-@app.get("/solve/{subject_id}/{topic_id}")
-async def solve_select_subtopics(request: Request, subject_id: int, topic_id: int):
-    user = _require_auth(await _current_user(request))
-
-    async with sm() as s:
-        repo = Repo(s)
-        subjects = await repo.get_subjects()
-        topics = await repo.get_topics(subject_id)
-        subtopics = await repo.get_subtopics(topic_id)
-
-    return templates.TemplateResponse(
-        request,
-        "solve_select.html",
-        {
-            "request": request,
-            "user": user,
-            "subjects": subjects,
-            "topics": topics,
-            "subtopics": subtopics,
-            "selected_subject_id": subject_id,
-            "selected_topic_id": topic_id,
-        },
-    )
-
-
-@app.post("/solve/start")
-async def solve_start(request: Request, subject_id: int = Form(...), topic_id: int = Form(...), subtopic_ids: list[int] = Form(default=[])):
-    _require_auth(await _current_user(request))
-
-    request.session["solve_subject_id"] = subject_id
-    request.session["solve_topic_id"] = topic_id
-    request.session["solve_subtopic_ids"] = subtopic_ids
-    request.session["solve_total"] = 0
-    request.session["solve_correct"] = 0
-    request.session["current_qid"] = None
-
-    return RedirectResponse(url="/solve/question", status_code=303)
-
-
 @app.get("/solve/question")
 async def solve_question(request: Request):
-    user = _require_auth(await _current_user(request))
+    user = await _current_user(request)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
 
     subject_id = request.session.get("solve_subject_id")
     topic_id = request.session.get("solve_topic_id")
@@ -422,9 +415,54 @@ async def solve_question(request: Request):
     )
 
 
+@app.get("/solve/topic/{subject_id}/{topic_id}")
+async def solve_select_subtopics(request: Request, subject_id: int, topic_id: int):
+    user = await _current_user(request)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+
+    async with sm() as s:
+        repo = Repo(s)
+        subjects = await repo.get_subjects()
+        topics = await repo.get_topics(subject_id)
+        subtopics = await repo.get_subtopics(topic_id)
+
+    return templates.TemplateResponse(
+        request,
+        "solve_select.html",
+        {
+            "request": request,
+            "user": user,
+            "subjects": subjects,
+            "topics": topics,
+            "subtopics": subtopics,
+            "selected_subject_id": subject_id,
+            "selected_topic_id": topic_id,
+        },
+    )
+
+
+@app.post("/solve/start")
+async def solve_start(request: Request, subject_id: int = Form(...), topic_id: int = Form(...), subtopic_ids: list[int] = Form(default=[])):
+    user = await _current_user(request)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+
+    request.session["solve_subject_id"] = subject_id
+    request.session["solve_topic_id"] = topic_id
+    request.session["solve_subtopic_ids"] = subtopic_ids
+    request.session["solve_total"] = 0
+    request.session["solve_correct"] = 0
+    request.session["current_qid"] = None
+
+    return RedirectResponse(url="/solve/question", status_code=303)
+
+
 @app.post("/solve/answer")
 async def solve_answer(request: Request, option_ids: list[int] = Form(default=[])):
-    user = _require_auth(await _current_user(request))
+    user = await _current_user(request)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
 
     qid = request.session.get("current_qid")
     if not qid:
@@ -466,9 +504,72 @@ async def solve_answer(request: Request, option_ids: list[int] = Form(default=[]
     )
 
 
+@app.get("/stats")
+async def stats_page(request: Request):
+    user = await _current_user(request)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+
+    async with sm() as s:
+        repo = Repo(s)
+        db_user = await repo.get_or_create_user(tg_id=user["tg_id"], full_name=user["full_name"])
+        total, correct = await repo.user_totals(db_user.id)
+        by_topic = await repo.solved_by_topic(db_user.id, limit=8)
+        by_day_raw = await repo.accuracy_by_day(db_user.id, days=14)
+        recent = await repo.recent_attempts(db_user.id, limit=10)
+
+    by_day_map = {d: (solved, corr) for d, solved, corr in by_day_raw}
+    days: list[dict[str, Any]] = []
+    for i in range(13, -1, -1):
+        date_key = (datetime.utcnow() - timedelta(days=i)).date().isoformat()
+        solved, corr = by_day_map.get(date_key, (0, 0))
+        days.append(
+            {
+                "date": date_key[5:],
+                "solved": solved,
+                "correct": corr,
+                "accuracy": _accuracy(corr, solved),
+            }
+        )
+
+    topic_total = sum(cnt for _, cnt in by_topic) or 1
+    topic_items = [
+        {"name": name, "count": cnt, "pct": round((cnt / topic_total) * 100.0, 1)}
+        for name, cnt in by_topic
+    ]
+
+    week_total = sum(d["solved"] for d in days[-7:])
+    week_correct = sum(d["correct"] for d in days[-7:])
+    best_day = max(days, key=lambda x: x["solved"]) if days else {"date": "-", "solved": 0}
+    streak = _streak_from_daily(days)
+
+    return templates.TemplateResponse(
+        request,
+        "stats.html",
+        {
+            "request": request,
+            "user": user,
+            "total": total,
+            "correct": correct,
+            "accuracy": _accuracy(correct, total),
+            "week_total": week_total,
+            "week_correct": week_correct,
+            "week_accuracy": _accuracy(week_correct, week_total),
+            "best_day": best_day,
+            "streak": streak,
+            "days": days,
+            "topic_items": topic_items,
+            "recent": recent,
+        },
+    )
+
+
 @app.get("/admin/import")
 async def admin_import_page(request: Request):
-    user = _require_admin(await _current_user(request))
+    current = await _current_user(request)
+    if not current:
+        return RedirectResponse(url="/", status_code=303)
+    user = _require_admin(current)
     return templates.TemplateResponse(
         request,
         "admin_import.html",
@@ -480,9 +581,149 @@ async def admin_import_page(request: Request):
     )
 
 
+@app.get("/admin/broadcast")
+async def admin_broadcast_page(request: Request):
+    current = await _current_user(request)
+    if not current:
+        return RedirectResponse(url="/", status_code=303)
+    user = _require_superadmin(current)
+
+    async with sm() as s:
+        repo = Repo(s)
+        total_users = len(await repo.list_user_tg_ids())
+
+    return templates.TemplateResponse(
+        request,
+        "admin_broadcast.html",
+        {
+            "request": request,
+            "user": user,
+            "total_users": total_users,
+            "error": None,
+            "report": None,
+            "draft": "",
+        },
+    )
+
+
+@app.post("/admin/broadcast")
+async def admin_broadcast_send(
+    request: Request,
+    text: str = Form(...),
+    send_confirm: str | None = Form(default=None),
+):
+    current = await _current_user(request)
+    if not current:
+        return RedirectResponse(url="/", status_code=303)
+    user = _require_superadmin(current)
+
+    async with sm() as s:
+        repo = Repo(s)
+        total_users = len(await repo.list_user_tg_ids())
+
+    msg = (text or "").strip()
+    if len(msg) < 3:
+        return templates.TemplateResponse(
+            request,
+            "admin_broadcast.html",
+            {
+                "request": request,
+                "user": user,
+                "total_users": total_users,
+                "error": "Слишком короткий текст рассылки.",
+                "report": None,
+                "draft": msg,
+            },
+        )
+    if len(msg) > 3500:
+        return templates.TemplateResponse(
+            request,
+            "admin_broadcast.html",
+            {
+                "request": request,
+                "user": user,
+                "total_users": total_users,
+                "error": "Слишком длинный текст (лимит 3500 символов).",
+                "report": None,
+                "draft": msg,
+            },
+        )
+    if send_confirm != "yes":
+        return templates.TemplateResponse(
+            request,
+            "admin_broadcast.html",
+            {
+                "request": request,
+                "user": user,
+                "total_users": total_users,
+                "error": "Подтверди отправку чекбоксом.",
+                "report": None,
+                "draft": msg,
+            },
+        )
+
+    async with sm() as s:
+        repo = Repo(s)
+        tg_ids = await repo.list_user_tg_ids()
+
+    sent = 0
+    failed = 0
+    skipped_self = 0
+    failed_ids: list[int] = []
+
+    for tg_id in tg_ids:
+        if tg_id == user["tg_id"]:
+            skipped_self += 1
+            continue
+        try:
+            await bot_client.send_message(chat_id=tg_id, text=msg)
+            sent += 1
+            await asyncio.sleep(0.03)
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(float(e.retry_after) + 0.2)
+            try:
+                await bot_client.send_message(chat_id=tg_id, text=msg)
+                sent += 1
+            except Exception:
+                failed += 1
+                if len(failed_ids) < 20:
+                    failed_ids.append(tg_id)
+        except (TelegramForbiddenError, TelegramBadRequest, TelegramAPIError):
+            failed += 1
+            if len(failed_ids) < 20:
+                failed_ids.append(tg_id)
+        except Exception:
+            failed += 1
+            if len(failed_ids) < 20:
+                failed_ids.append(tg_id)
+
+    report = {
+        "sent": sent,
+        "failed": failed,
+        "skipped_self": skipped_self,
+        "failed_ids": failed_ids,
+    }
+
+    return templates.TemplateResponse(
+        request,
+        "admin_broadcast.html",
+        {
+            "request": request,
+            "user": user,
+            "total_users": len(tg_ids),
+            "error": None,
+            "report": report,
+            "draft": "",
+        },
+    )
+
+
 @app.post("/admin/import")
 async def admin_import_upload(request: Request, file: UploadFile):
-    user = _require_admin(await _current_user(request))
+    current = await _current_user(request)
+    if not current:
+        return RedirectResponse(url="/", status_code=303)
+    user = _require_admin(current)
 
     raw = await file.read()
     name = (file.filename or "").lower()
