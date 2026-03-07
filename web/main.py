@@ -35,6 +35,10 @@ app.add_middleware(SessionMiddleware, secret_key=config.web_session_secret)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
+CODE_REQUEST_COOLDOWN_SECONDS = 60
+_code_req_by_ip: dict[str, datetime] = {}
+_code_req_by_tg: dict[int, datetime] = {}
+
 
 @app.on_event("startup")
 async def startup() -> None:
@@ -70,6 +74,41 @@ def _render_index(request: Request, user: dict[str, Any] | None, error: str | No
             "pending_login_name": request.session.get("pending_login_name"),
         },
     )
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _cooldown_left(last_dt: datetime, cooldown_sec: int, now: datetime) -> int:
+    passed = int((now - last_dt).total_seconds())
+    return max(0, cooldown_sec - passed)
+
+
+def _check_code_request_cooldown(ip: str, tg_id: int, now: datetime) -> tuple[bool, int]:
+    ip_last = _code_req_by_ip.get(ip)
+    if ip_last:
+        left = _cooldown_left(ip_last, CODE_REQUEST_COOLDOWN_SECONDS, now)
+        if left > 0:
+            return False, left
+
+    tg_last = _code_req_by_tg.get(tg_id)
+    if tg_last:
+        left = _cooldown_left(tg_last, CODE_REQUEST_COOLDOWN_SECONDS, now)
+        if left > 0:
+            return False, left
+
+    return True, 0
+
+
+def _mark_code_request(ip: str, tg_id: int, now: datetime) -> None:
+    _code_req_by_ip[ip] = now
+    _code_req_by_tg[tg_id] = now
 
 
 async def _current_user(request: Request) -> dict[str, Any] | None:
@@ -199,6 +238,8 @@ async def auth_request_code(request: Request, telegram: str = Form(...)):
     if not telegram_input:
         return _render_index(request, None, error="Укажите Telegram: @username или numeric tg_id.")
 
+    ip = _client_ip(request)
+
     async with sm() as s:
         repo = Repo(s)
 
@@ -217,8 +258,16 @@ async def auth_request_code(request: Request, telegram: str = Form(...)):
                 error="Пользователь не найден. Сначала напишите боту /start с этого Telegram аккаунта.",
             )
 
-        code = f"{secrets.randbelow(1_000_000):06d}"
         now = datetime.utcnow()
+        allowed, left = _check_code_request_cooldown(ip=ip, tg_id=target_user.tg_id, now=now)
+        if not allowed:
+            return _render_index(
+                request,
+                None,
+                error=f"Слишком часто. Повтори запрос кода через {left} сек.",
+            )
+
+        code = f"{secrets.randbelow(1_000_000):06d}"
         rec = WebLoginCode(
             tg_id=target_user.tg_id,
             code_hash=_code_hash(code),
@@ -226,6 +275,7 @@ async def auth_request_code(request: Request, telegram: str = Form(...)):
         )
         s.add(rec)
         await s.commit()
+        _mark_code_request(ip=ip, tg_id=target_user.tg_id, now=now)
 
     try:
         await bot_client.send_message(
